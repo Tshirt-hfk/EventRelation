@@ -4,11 +4,12 @@
 CEC 采用了 XML 语言作为标注格式，其中包含了六个最重要的数据结构（标记）：Event、Denoter、Time、Location、Participant 和 Object。Event用于描述事件；Denoter(Trigger)、Time、Location、Participant 和 Object用于描述事件的指示词和要素。此外，我们还为每一个标记定义了与之相关的属性。与ACE和TimeBank语料库相比，CEC语料库的规模虽然偏小，但是对事件和事件要素的标注却最为全面。
 # 依赖
 pip install -r requirements.txt
-# 模型训练
-1. python prepare_cec.py
-2. python split_dataset.py
-3. python train.py
-4. python predict.py
+# 模型训练和使用
+1. 处理CEC数据 python prepare_cec.py
+2. 划分CEC数据 python split_dataset.py
+3. 进行模型训练 python train.py
+4. 模型离线推理 python predict.py
+5. 提供web服务 python web_api.py
 # 效果
 #### 指标：              (f1, precision, recall)
 #### trigger tags:       (0.8214, 0.8142, 0.8288)
