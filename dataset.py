@@ -53,7 +53,6 @@ class EventDataset:
 
                 example = json.loads(line.strip())
                 tokenized_input = tokenizer(example["sentence"], is_split_into_words=True)
-                # print(example["sentence"])
                 input_ids = tokenized_input.input_ids
                 word_ids = tokenized_input.word_ids()
                 triggers_label = [TRIGGER2LABEL['O']] * len(word_ids)
@@ -66,34 +65,34 @@ class EventDataset:
                     for i, word_id in enumerate(word_ids):
                         label = TAG2LABEL['O']
                         if word_id is None:
-                            label = TAG2LABEL['O']
-                        elif event['trigger']['offset'][0] == word_id:
+                            event_label.append(label)
+                            continue
+                        if event['trigger']['offset'][0] == word_id:
                             triggers_label[i] = TRIGGER2LABEL['B-TRIGGER']
                             trigger_pos.append(i)
-                        elif event['trigger']['offset'][0] < word_id < event['trigger']['offset'][1]:
+                        if event['trigger']['offset'][0] < word_id < event['trigger']['offset'][1]:
                             triggers_label[i] = TRIGGER2LABEL['I-TRIGGER']
                             trigger_pos.append(i)
-                        elif event['time'] is not None:
+                        if event['time'] is not None:
                             if event['time']['offset'][0] == word_id:
                                 label = TAG2LABEL['B-TIME']
                             elif event['time']['offset'][0] < word_id < event['time']['offset'][1]:
                                 label = TAG2LABEL['I-TIME']
-                        elif event['loc'] is not None:
+                        if event['loc'] is not None:
                             if event['loc']['offset'][0] == word_id:
                                 label = TAG2LABEL['B-LOC']
                             elif event['loc']['offset'][0] < word_id < event['loc']['offset'][1]:
-                                label = TAG2LABEL['I-LOC']
-                        else:
-                            for object_s in event['object_s']:
-                                if object_s['offset'][0] == word_id:
-                                    label = TAG2LABEL['B-OBJECT-S']
-                                elif object_s['offset'][0] < word_id < object_s['offset'][1]:
-                                    label = TAG2LABEL['I-OBJECT-S']
-                            for object_o in event['object_o']:
-                                if object_o['offset'][0] == word_id:
-                                    label = TAG2LABEL['B-OBJECT-O']
-                                elif object_o['offset'][0] < word_id < object_o['offset'][1]:
-                                    label = TAG2LABEL['I-OBJECT-O']
+                                label = TAG2LABEL['I-LOC']       
+                        for object_s in event['object_s']:
+                            if object_s['offset'][0] == word_id:
+                                label = TAG2LABEL['B-OBJECT-S']
+                            elif object_s['offset'][0] < word_id < object_s['offset'][1]:
+                                label = TAG2LABEL['I-OBJECT-S']
+                        for object_o in event['object_o']:
+                            if object_o['offset'][0] == word_id:
+                                label = TAG2LABEL['B-OBJECT-O']
+                            elif object_o['offset'][0] < word_id < object_o['offset'][1]:
+                                label = TAG2LABEL['I-OBJECT-O']
                         event_label.append(label)
                     triggers_pos.append(trigger_pos)
                     events_polarity.append(POLARITY2LABEL[event['polarity']])
@@ -206,8 +205,11 @@ class BatchEventDataset(EventDataset):
         data = self.batch_examples[self.idx]
         self.idx += 1
         return data
-        
     
+
+from transformers import AutoTokenizer
+tokenizer = AutoTokenizer.from_pretrained("../pretrain/chinese-roberta-wwm-ext")
+train_dataset = BatchEventDataset(file_path="./data/example.json", tokenizer=tokenizer, batch_size=32, shuffle=True, last_batch=False)
 
 
     

@@ -55,7 +55,6 @@ if __name__ == "__main__":
     mdoel = model.cuda()
     model.eval()
     text = "昨天清晨6时许，一辆乘坐12人的超载面包车行驶至京承高速进京方向时突然起火，司机和副驾驶逃生，而坐在车内的10名木工不同程度烧伤，其中一人死亡。据了解，面包车可能是自燃，司机已被警方带走调查。"
-    text = "事发后，急救车赶到将两名伤者送至附近医院。据了解，面包车司机伤势无大碍，被甩出的男乘客伤势较重，正在医院治疗。目前，事故原因正在进一步调查中。"
     input_text, triggers_pos_list, events_tags_list, events_relations_list = predict(model, tokenizer, text)
 
     print("".join(input_text))
