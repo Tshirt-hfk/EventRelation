@@ -6,52 +6,118 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import BertModel
 
+class BasicAttentionLayer(nn.Module):
+    
+    def __init__(self, embed_dim, num_heads, k_dim=None, v_dim=None, bias=True, dropout=0.0, q_transform=False):
+        super(BasicAttentionLayer, self).__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.k_dim = embed_dim // num_heads if k_dim is None else k_dim
+        self.v_dim = embed_dim // num_heads if v_dim is None else v_dim
+        self.bias = bias
+        self.scaling = self.k_dim ** -0.5
+        self.dropout = dropout
 
-class ConditionalLayerNorm(nn.Module):
-    def __init__(self,
-                 hidden_size,
-                 eps=1e-12):
-        super().__init__()
-
-        self.eps = eps
-
-        self.weight = nn.Parameter(torch.Tensor(hidden_size))
-        self.bias = nn.Parameter(torch.Tensor(hidden_size))
-
-        self.weight_dense = nn.Linear(hidden_size, hidden_size, bias=True)
-        self.bias_dense = nn.Linear(hidden_size, hidden_size, bias=True)
+        if q_transform:
+            self.q_transform = nn.Linear(embed_dim, self.num_heads * self.v_dim, bias=bias)
+        else:
+            self.q_transform = None
+        self.q_proj = nn.Linear(embed_dim, self.num_heads * self.k_dim, bias=bias)
+        self.k_proj = nn.Linear(embed_dim, self.num_heads * self.k_dim, bias=bias)
+        self.v_proj = nn.Linear(embed_dim, self.num_heads * self.v_dim, bias=bias)
 
         self.init_weight()
 
     def init_weight(self):
-        """
-        此处初始化的作用是在训练开始阶段不让 conditional layer norm 起作用
-        """
-        nn.init.ones_(self.weight)
-        nn.init.zeros_(self.bias)
+        if self.q_transform is not None:
+            nn.init.xavier_uniform_(self.q_transform.weight)
+            nn.init.constant_(self.q_transform.bias, 0.)
 
-        nn.init.zeros_(self.weight_dense.weight)
-        nn.init.zeros_(self.bias_dense.weight)
+        nn.init.xavier_uniform_(self.k_proj.weight)
+        nn.init.xavier_uniform_(self.v_proj.weight)
+        nn.init.xavier_uniform_(self.q_proj.weight)
 
-    def forward(self, inputs, cond=None):
-        assert cond is not None, 'Conditional tensor need to input when use conditional layer norm'
+        if self.bias:
+            nn.init.constant_(self.q_proj.bias, 0.)
+            nn.init.constant_(self.k_proj.bias, 0.)
+            nn.init.constant_(self.v_proj.bias, 0.)
 
-        cond = torch.unsqueeze(cond, 2)  # (b, n, 1, h)
+    def forward(self, query, key, value, mask=None):
+        # bsz, len, embed_dim
+        bsz = query.size(0)
+        src_len = query.size(1)
+        trg_len = value.size(1)
 
-        weight = self.weight_dense(cond) + self.weight  # (b, 1, h)
-        bias = self.bias_dense(cond) + self.bias  # (b, 1, h)
+        q = self.q_proj(query)
+        k = self.k_proj(key)
+        v = self.v_proj(value)
 
-        mean = torch.mean(inputs, dim=-1, keepdim=True)  # （b, s, 1）
-        outputs = inputs - mean  # (b, s, h)
-        variance = torch.mean(outputs ** 2, dim=-1, keepdim=True)
-        std = torch.sqrt(variance + self.eps)  # (b, s, 1)
-        outputs = outputs / std  # (b, s, h)
-        outputs = torch.unsqueeze(outputs, 1) # (b, 1, s, h)
+        q *= self.scaling
+        q = q.transpose(0, 1).contiguous().view(-1, bsz * self.num_heads, self.k_dim).transpose(0, 1)
+        k = k.transpose(0, 1).contiguous().view(-1, bsz * self.num_heads, self.k_dim).transpose(0, 1)
+        v = v.transpose(0, 1).contiguous().view(-1, bsz * self.num_heads, self.v_dim).transpose(0, 1)
 
-        outputs = outputs * weight + bias
+        attn_weights = torch.bmm(q, k.transpose(1, 2))
+        assert list(attn_weights.size()) == [bsz * self.num_heads, src_len, trg_len]
 
-        return outputs
+        if mask is not None:
+            attn_weights = attn_weights.view(bsz, self.num_heads, src_len, trg_len)
+            mask = mask.unsqueeze(1)
+            attn_weights = attn_weights - (1 - mask) * 1e6
+            attn_weights = attn_weights.view(bsz * self.num_heads, src_len, trg_len)
 
+        attn_weights = torch.softmax(attn_weights, dim=-1)
+        attn_weights = F.dropout(attn_weights, p=self.dropout, training=self.training)
+
+        attn = torch.bmm(attn_weights, v)
+
+        attn = attn.view(bsz, self.num_heads, src_len, self.v_dim).transpose(1, 2).contiguous().view(bsz, src_len, self.num_heads * self.v_dim)
+
+        if self.q_transform is not None:
+            attn = attn + self.q_transform(query)
+
+        return attn
+
+class InteractionLayer(nn.Module):
+    
+    def __init__(self, embed_dim, num_heads, qk_dim=None, bias=True):
+        super(InteractionLayer, self).__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.qk_dim = embed_dim // num_heads if qk_dim is None else qk_dim
+        self.bias = bias
+        self.scaling = self.qk_dim ** -0.5
+        self.q_proj = nn.Linear(embed_dim, self.num_heads * self.qk_dim, bias=bias)
+        self.k_proj = nn.Linear(embed_dim, self.num_heads * self.qk_dim, bias=bias)
+
+        self.init_weight()
+
+    def init_weight(self):
+        nn.init.xavier_uniform_(self.k_proj.weight)
+        nn.init.xavier_uniform_(self.q_proj.weight)
+
+        if self.bias:
+            nn.init.constant_(self.q_proj.bias, 0.)
+            nn.init.constant_(self.k_proj.bias, 0.)
+
+    def forward(self, query, key):
+        # bsz, len, embed_dim
+        bsz = query.size(0)
+        q_len = query.size(1)
+        k_len = key.size(1)
+
+        q = self.q_proj(query)
+        k = self.k_proj(key)
+
+        q *= self.scaling
+        q = q.transpose(0, 1).contiguous().view(-1, bsz * self.num_heads, self.qk_dim).transpose(0, 1)
+        k = k.transpose(0, 1).contiguous().view(-1, bsz * self.num_heads, self.qk_dim).transpose(0, 1)
+
+        qk_weights = torch.bmm(q, k.transpose(1, 2))
+
+        qk_weights = qk_weights.view(bsz, self.num_heads, q_len, k_len).permute(0,2,3,1)
+
+        return qk_weights
 
 class EventExtractModel(nn.Module):
 
@@ -68,23 +134,17 @@ class EventExtractModel(nn.Module):
 
         self.triggers_classifier = nn.Sequential(
             nn.Linear(self.hidden_size, 256),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout_prob),
             nn.Linear(256, 3)
         )
 
-        self.conditional_layernorm = ConditionalLayerNorm(self.hidden_size)
-        self.events_tags_classifier = nn.Sequential(
-            nn.Linear(self.hidden_size, 256),
-            nn.ReLU(),
-            nn.Dropout(dropout_prob),
-            nn.Linear(256, 9)
-        )
+        self.events_tags_classifier = InteractionLayer(self.hidden_size, 9, qk_dim=128)
 
-        # self.events_transform = nn.MultiheadAttention(self.hidden_size, self.num_attention_heads, batch_first=True)
+        self.events_transform = BasicAttentionLayer(self.hidden_size, self.num_attention_heads, q_transform=True)
         self.events_relations_classifier = nn.Sequential(
             nn.Linear(self.hidden_size*2, 256),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout_prob),
             nn.Linear(256, 7)
         )
@@ -97,8 +157,7 @@ class EventExtractModel(nn.Module):
     
     def calc_events_tags(self, seq_out, triggers_hidden):
 
-        events_tags_hidden = self.conditional_layernorm(seq_out, triggers_hidden)
-        events_tags_logits = self.events_tags_classifier(events_tags_hidden)
+        events_tags_logits = self.events_tags_classifier(triggers_hidden, seq_out)
 
         return events_tags_logits
     
@@ -111,8 +170,10 @@ class EventExtractModel(nn.Module):
         events_relations_logits = self.events_relations_classifier(events_interaction)
         return events_relations_logits
 
-    def get_events_hidden(self, seq_out, triggers_hidden):
-        return triggers_hidden
+    def get_events_hidden(self, seq_out, triggers_hidden, attention_mask):
+        triggers_hidden = triggers_hidden
+        events_hidden = self.events_transform(triggers_hidden, seq_out, seq_out, attention_mask.unsqueeze(1))
+        return events_hidden
 
     def get_triggers_hidden(self, seq_out, triggers_pos, triggers_mask):
 
@@ -142,7 +203,7 @@ class EventExtractModel(nn.Module):
         triggers_hidden = self.get_triggers_hidden(seq_out, triggers_pos, triggers_mask)   
         events_tags_logit = self.calc_events_tags(seq_out, triggers_hidden)
 
-        events_hidden = self.get_events_hidden(seq_out, triggers_hidden)
+        events_hidden = self.get_events_hidden(seq_out, triggers_hidden, attention_mask)
         events_relations_logit = self.calc_events_relations(events_hidden)
 
         return triggers_logit, events_tags_logit, events_relations_logit

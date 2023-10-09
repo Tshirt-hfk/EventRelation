@@ -10,7 +10,7 @@ from model import EventExtractModel
 from utils import calc_events_relations_mertic, calc_tags_metric, get_events_relations_list, get_tags_pos_list
 
 
-epoch = 20
+epoch = 10
 tokenizer = AutoTokenizer.from_pretrained("../pretrain/chinese-roberta-wwm-ext")
 train_dataset = BatchEventDataset(file_path="./data/train.json", tokenizer=tokenizer, batch_size=32, shuffle=True, last_batch=False)
 dev_dataset = BatchEventDataset(file_path="./data/dev.json", tokenizer=tokenizer, batch_size=8, shuffle=False, last_batch=True)
