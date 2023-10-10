@@ -10,7 +10,7 @@ from model import EventExtractModel
 from utils import calc_events_relations_mertic, calc_tags_metric, get_events_relations_list, get_tags_pos_list
 
 
-epoch = 10
+epoch = 20
 tokenizer = AutoTokenizer.from_pretrained("../pretrain/chinese-roberta-wwm-ext")
 train_dataset = BatchEventDataset(file_path="./data/train.json", tokenizer=tokenizer, batch_size=32, shuffle=True, last_batch=False)
 dev_dataset = BatchEventDataset(file_path="./data/dev.json", tokenizer=tokenizer, batch_size=8, shuffle=False, last_batch=True)
@@ -19,7 +19,7 @@ optimizer = optim.AdamW([
     {'params': [p for n, p in model.named_parameters() if "LayerNorm" not in n], 'weight_decay': 0.01},
     {'params': [p for n, p in model.named_parameters() if "LayerNorm" in n], 'weight_decay': 0.0}
 ], lr=4e-5)
-scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95, last_epoch=-1, verbose=False)
+scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9, last_epoch=-1, verbose=False)
 
 for idx in range(epoch):
     print("epoch {} start to train ====>".format(idx))
@@ -43,7 +43,7 @@ for idx in range(epoch):
                         events_tags_logit, events_tags_label,
                         events_relations_logit, events_relations_label,
                         attention_mask, events_tags_mask, events_mask)
-        loss = triggers_loss + events_tags_loss * min(5, idx*0.5) + events_relations_loss * min(5, idx*0.5)
+        loss = triggers_loss + events_tags_loss * min(1, idx*0.5) + events_relations_loss * min(1, idx*0.5)
 
         print("epoch: {}-{}, triggers_loss: {}, events_tags_loss: {}, events_relations_loss: {}".format(idx, i, triggers_loss, events_tags_loss, events_relations_loss))
         optimizer.zero_grad()

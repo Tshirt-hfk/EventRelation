@@ -51,10 +51,10 @@ if __name__ == "__main__":
 
     tokenizer = AutoTokenizer.from_pretrained("../pretrain/chinese-roberta-wwm-ext")
     model = EventExtractModel("../pretrain/chinese-roberta-wwm-ext")
-    model.load_state_dict(torch.load("./output/model_9.pt"))
+    model.load_state_dict(torch.load("./output/model_16.pt"))
     mdoel = model.cuda()
     model.eval()
-    text = "昨天清晨6时许，一辆乘坐12人的超载面包车行驶至京承高速进京方向时突然起火，司机和副驾驶逃生，而坐在车内的10名木工不同程度烧伤，其中一人死亡。据了解，面包车可能是自燃，司机已被警方带走调查。"
+    text = "本报讯(记者雷娜)昨天上午11时许，顺平路北窑上桥南两公里处，一辆满载煤炭的大货车为躲避前方突然并线的小轿车，失控侧翻到逆行车道。事故中司机受伤。"
     input_text, triggers_pos_list, events_tags_list, events_relations_list = predict(model, tokenizer, text)
 
     print("".join(input_text))
