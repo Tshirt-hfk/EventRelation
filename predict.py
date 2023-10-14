@@ -48,10 +48,10 @@ def predict(model, tokenizer, input_text):
     return input_text, triggers_pos_list_out, events_tags_list_out, events_relations_list
 
 
-def predict_with_triggers(model, tokenizer, input_text, first_trigger_pos, second_trigger_pos):
+def predict_with_triggers(model, tokenizer, input_text, pos_list):
     
-    input_text, pos_a, pos_b = get_trigger_pos_from_text(tokenizer, input_text, first_trigger_pos, second_trigger_pos)
-    triggers_pos_list_out = [(0, (pos_a[0]+1, pos_a[1])), (0, (pos_b[0]+1, pos_b[1]))]
+    input_text, pos_list = get_trigger_pos_from_text(tokenizer, input_text, pos_list)
+    triggers_pos_list_out = [(0, (pos[0]+1, pos[1])) for pos in pos_list]
     print(triggers_pos_list_out)
     tokenized_input = tokenizer(input_text, is_split_into_words=True)
     input_ids = tokenized_input.input_ids
@@ -60,7 +60,7 @@ def predict_with_triggers(model, tokenizer, input_text, first_trigger_pos, secon
     attention_mask = torch.LongTensor([attention_mask]).cuda()
     seq_out, _ = model.get_seq_hidden(input_ids, attention_mask)
 
-    triggers_pos_list = [[x+1 for x in range(pos_a[0], pos_a[1])], [x+1 for x in range(pos_b[0], pos_b[1])]]
+    triggers_pos_list = [[x+1 for x in range(pos[0], pos[1])] for pos in pos_list]
     max_trigger_num = len(triggers_pos_list)
     max_trigger_len = max([len(trigger_pos) for trigger_pos in triggers_pos_list] + [0])
     triggers_pos = [[trigger + [0] * (max_trigger_len - len(trigger)) for trigger in triggers_pos_list]]

@@ -48,48 +48,34 @@ def process_v2():
     else:
         text = request.values.get("full_text")
         event_list = request.values.get('event_list')
-    eid_a, pos_a = event_list[0]["eid"], event_list[0]["event_trigger_offset"]
-    eid_b, pos_b = event_list[1]["eid"], event_list[1]["event_trigger_offset"]
+    event_num = len(event_list)
+    eid_list = [event["eid"] for event in event_list]
+    pos_list = [event["event_trigger_offset"] for event in event_list]
 
     try:
-        input_text, triggers_pos_list, events_tags_list, events_relations_list = predict_with_triggers(model, tokenizer, text, pos_a, pos_b)
-        rps_json = {}
-        if events_relations_list[0][1] != 0:
-            rps_json = {
-                "code": 200,
-                "message": "success",
-                "result": [
-                        {
-                    "head_id": eid_a,
-                    "tail_id": eid_b,
-                    "relation": LABEL2ER[events_relations_list[0][1]]
-                }
-                ]
-            }
-        elif events_relations_list[1][0]:
-            rps_json = {
-                "code": 200,
-                "message": "success",
-                "result": [
-                    {
-                        "head_id": eid_b,
-                        "tail_id": eid_a,
-                        "relation": LABEL2ER[events_relations_list[1][0]]
-                    }
-                ]
-            }
-        else:
-            rps_json = {
-                "code": 500,
-                "message": "Event A and Event B are not related!"
-            }
+        input_text, triggers_pos_list, events_tags_list, events_relations_list = predict_with_triggers(model, tokenizer, text, pos_list)
+        rsp_json = {
+            "code": 200,
+            "message": "success",
+            "result": [
+            ]
+        }
+        for i in range(event_num):
+            for j in range(event_num):
+                if events_relations_list[i][j] > 0:
+                    rsp_json["result"].append({
+                        "head_id": eid_list[i],
+                        "tail_id": eid_list[j],
+                        "relation": LABEL2ER[events_relations_list[i][j]]
+                    })
+
     except Exception as e:
         rps_json = {
                 "code": 500,
                 "message": "%s" % e
             }
     
-    return jsonify(rps_json)
+    return jsonify(rsp_json)
 
 if __name__ == '__main__':
     app.run(debug=True)

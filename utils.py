@@ -1,39 +1,34 @@
 # coding=utf-8
 
 
-def get_trigger_pos_from_text(tokenizer, text, first_trigger_pos, second_trigger_pos):
-    assert (first_trigger_pos[1] <= second_trigger_pos[0] or second_trigger_pos[1] <= first_trigger_pos[0]), "ERROR: 事件触发词重叠"
-
-    if first_trigger_pos[1] <= second_trigger_pos[0]:
-        pos_list = [0] + first_trigger_pos + second_trigger_pos
-        reverse = False
-    else:
-        pos_list = [0] + second_trigger_pos + first_trigger_pos
-        reverse = True
-
+def get_trigger_pos_from_text(tokenizer, text, trigger_pos_list):
+    pos_with_order = sorted([[i, pos] for i, pos in enumerate(trigger_pos_list)], key=lambda x:x[1][0])
+    order_list = [x[0] for x in pos_with_order]
+    pos_list = [x[1] for x in pos_with_order]
+    for i in range(len(pos_list)-1):
+        if pos_list[i][1] > pos_list[i+1][0]:
+            raise "ERROR: 事件触发词重叠"
+    pos_list = [0] + sum(pos_list, start=[])
     cur_pos = 0
     new_pos_list = []
     input_text = []
     for i in range(len(pos_list)-1):
         sub_text = text[pos_list[i]: pos_list[i+1]]
         sub_input_text = tokenizer.tokenize(sub_text) if len(sub_text)>0 else []
+        new_pos_list.append([cur_pos, cur_pos+len(sub_input_text)])
         cur_pos = cur_pos+len(sub_input_text)
-        new_pos_list.append(cur_pos)
         input_text += sub_input_text
     sub_text = text[pos_list[-1]:]
-    sub_input_text = tokenizer.tokenize(sub_text)
+    sub_input_text = tokenizer.tokenize(sub_text) if len(sub_text)>0 else []
+    new_pos_list.append([cur_pos, cur_pos+len(sub_input_text)])
     cur_pos = cur_pos+len(sub_input_text)
-    new_pos_list.append(cur_pos)
     input_text += sub_input_text
 
-    if reverse:
-        new_pos_b = new_pos_list[0:2]
-        new_pos_a = new_pos_list[2:4]
-    else:
-        new_pos_a = new_pos_list[0:2]
-        new_pos_b = new_pos_list[2:4]
+    new_pos_list = [(i, pos) for i, pos in zip(order_list, new_pos_list[1::2])]
+    new_pos_list = sorted(new_pos_list, key=lambda x:x[0])
+    new_pos_list = [x[1] for x in new_pos_list]
     
-    return input_text, new_pos_a, new_pos_b
+    return input_text, new_pos_list
 
 
 def get_tags_pos_list(pred_labels, input_masks, events_masks=None):
