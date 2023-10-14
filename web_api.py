@@ -3,7 +3,7 @@ import torch
 from flask import Flask, jsonify, abort, request
 from dataset import ID2TAG, LABEL2ER
 from model import EventExtractModel
-from predict import predict
+from predict import predict, predict_with_triggers
 from transformers import AutoTokenizer
 app = Flask(__name__)
 
@@ -36,6 +36,60 @@ def process():
         "events_relations_list": events_relations_list
     })
 
+
+@app.route("/event_relation", methods=["POST"])
+def process_v2():
+    if request.content_type.startswith('application/json'):
+        text = request.json.get('full_text')
+        event_list = request.json.get('event_list')
+    elif request.content_type.startswith('multipart/form-data'):
+        text = request.form.get('full_text')
+        event_list = request.form.get('event_list')
+    else:
+        text = request.values.get("full_text")
+        event_list = request.values.get('event_list')
+    eid_a, pos_a = event_list[0]["eid"], event_list[0]["event_trigger_offset"]
+    eid_b, pos_b = event_list[1]["eid"], event_list[1]["event_trigger_offset"]
+
+    try:
+        input_text, triggers_pos_list, events_tags_list, events_relations_list = predict_with_triggers(model, tokenizer, text, pos_a, pos_b)
+        rps_json = {}
+        if events_relations_list[0][1] != 0:
+            rps_json = {
+                "code": 200,
+                "message": "success",
+                "result": [
+                        {
+                    "head_id": eid_a,
+                    "tail_id": eid_b,
+                    "relation": LABEL2ER[events_relations_list[0][1]]
+                }
+                ]
+            }
+        elif events_relations_list[1][0]:
+            rps_json = {
+                "code": 200,
+                "message": "success",
+                "result": [
+                    {
+                        "head_id": eid_b,
+                        "tail_id": eid_a,
+                        "relation": LABEL2ER[events_relations_list[1][0]]
+                    }
+                ]
+            }
+        else:
+            rps_json = {
+                "code": 500,
+                "message": "Event A and Event B are not related!"
+            }
+    except Exception as e:
+        rps_json = {
+                "code": 500,
+                "message": "%s" % e
+            }
+    
+    return jsonify(rps_json)
 
 if __name__ == '__main__':
     app.run(debug=True)

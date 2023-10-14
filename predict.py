@@ -3,10 +3,11 @@ from dataset import ID2TAG, LABEL2ER
 from model import EventExtractModel
 import torch
 from transformers import AutoTokenizer
-from utils import get_events_relations_list, get_tags_pos_list
+from utils import get_events_relations_list, get_tags_pos_list, get_trigger_pos_from_text
 
 
 def predict(model, tokenizer, input_text):
+
     input_text = tokenizer.tokenize(input_text)
     tokenized_input = tokenizer(input_text, is_split_into_words=True)
     input_ids = tokenized_input.input_ids
@@ -47,6 +48,45 @@ def predict(model, tokenizer, input_text):
     return input_text, triggers_pos_list_out, events_tags_list_out, events_relations_list
 
 
+def predict_with_triggers(model, tokenizer, input_text, first_trigger_pos, second_trigger_pos):
+    
+    input_text, pos_a, pos_b = get_trigger_pos_from_text(tokenizer, input_text, first_trigger_pos, second_trigger_pos)
+    triggers_pos_list_out = [(0, (pos_a[0]+1, pos_a[1])), (0, (pos_b[0]+1, pos_b[1]))]
+    print(triggers_pos_list_out)
+    tokenized_input = tokenizer(input_text, is_split_into_words=True)
+    input_ids = tokenized_input.input_ids
+    attention_mask = tokenized_input.attention_mask
+    input_ids = torch.LongTensor([input_ids]).cuda()
+    attention_mask = torch.LongTensor([attention_mask]).cuda()
+    seq_out, _ = model.get_seq_hidden(input_ids, attention_mask)
+
+    triggers_pos_list = [[x+1 for x in range(pos_a[0], pos_a[1])], [x+1 for x in range(pos_b[0], pos_b[1])]]
+    max_trigger_num = len(triggers_pos_list)
+    max_trigger_len = max([len(trigger_pos) for trigger_pos in triggers_pos_list] + [0])
+    triggers_pos = [[trigger + [0] * (max_trigger_len - len(trigger)) for trigger in triggers_pos_list]]
+    triggers_mask = [[[1] * len(trigger) + [0] * (max_trigger_len - len(trigger)) for trigger in triggers_pos_list]]
+    
+    triggers_pos = torch.LongTensor(triggers_pos).cuda()
+    triggers_mask = torch.LongTensor(triggers_mask).cuda()
+    triggers_hidden = model.get_triggers_hidden(seq_out, triggers_pos, triggers_mask)
+
+    events_mask = [[1]*max_trigger_num]
+    events_mask = torch.LongTensor(events_mask).cuda()
+    events_tags_mask =  torch.einsum('bn,bl->bnl', events_mask, attention_mask)
+    events_tags_logit = model.calc_events_tags(seq_out, triggers_hidden)
+    events_tags_label = torch.max(events_tags_logit, dim=-1)[1]
+    events_tags_label = torch.reshape(events_tags_label, [-1, events_tags_label.size(-1)])
+    events_tags_mask = torch.reshape(events_tags_mask, [-1, events_tags_mask.size(-1)])
+    events_tags_list_out = get_tags_pos_list(events_tags_label, events_tags_mask)
+
+    events_hidden = model.get_events_hidden(seq_out, triggers_hidden, attention_mask)
+    events_relations_logit = model.calc_events_relations(events_hidden)
+
+    events_relations = torch.max(events_relations_logit, dim=-1)[1]
+    events_relations_list = get_events_relations_list(events_relations, events_mask)
+
+    return input_text, triggers_pos_list_out, events_tags_list_out, events_relations_list
+
 if __name__ == "__main__":
 
     tokenizer = AutoTokenizer.from_pretrained("../pretrain/chinese-roberta-wwm-ext")
@@ -55,20 +95,39 @@ if __name__ == "__main__":
     mdoel = model.cuda()
     model.eval()
     text = "本报讯(记者雷娜)昨天上午11时许，顺平路北窑上桥南两公里处，一辆满载煤炭的大货车为躲避前方突然并线的小轿车，失控侧翻到逆行车道。事故中司机受伤。"
+    trigger_pos_a, trigger_pos_b = [2, 3], [42, 44]
+
     input_text, triggers_pos_list, events_tags_list, events_relations_list = predict(model, tokenizer, text)
 
     print("".join(input_text))
 
+    print("\npredict for text =====================================>")
     for i, (trigger_pos, event_tags) in enumerate(zip(triggers_pos_list, events_tags_list)):
-        print("\n----------event {} start----------".format(i))
+        print("----------event {} start----------".format(i))
         _, pos = trigger_pos
-        print("TRIGGER:", input_text[pos[0]-1:pos[-1]])
+        print("TRIGGER:", "".join(input_text[pos[0]-1:pos[-1]]))
         for event_tag in event_tags:
             label, pos = event_tag
             tag = ID2TAG[label]
-            print(tag+":", input_text[pos[0]-1:pos[-1]])
+            print(tag+":", "".join(input_text[pos[0]-1:pos[-1]]))
         print("----------event {} end----------".format(i))
-    print("\n")
+    for i, event_relations in enumerate(events_relations_list):
+        for j, relation in enumerate(event_relations):
+            if relation > 0:
+                print("event {} - {} relation: {}".format(i, j, LABEL2ER[relation]))
+
+    print("\nonly predict for two event =====================================>")
+    input_text, triggers_pos_list_out, events_tags_list, events_relations_list = predict_with_triggers(model, tokenizer, text, trigger_pos_a, trigger_pos_b)
+    for i, (trigger_pos, event_tags) in enumerate(zip(triggers_pos_list, events_tags_list)):
+        print("----------event {} start----------".format(i))
+        _, pos = trigger_pos
+        print("TRIGGER:", "".join(input_text[pos[0]-1:pos[-1]]))
+        for event_tag in event_tags:
+            label, pos = event_tag
+            tag = ID2TAG[label]
+            print(tag+":", "".join(input_text[pos[0]-1:pos[-1]]))
+        print("----------event {} end----------".format(i))
+    print(events_relations_list)
     for i, event_relations in enumerate(events_relations_list):
         for j, relation in enumerate(event_relations):
             if relation > 0:

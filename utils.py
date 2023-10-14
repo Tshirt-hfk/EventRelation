@@ -1,6 +1,41 @@
 # coding=utf-8
 
 
+def get_trigger_pos_from_text(tokenizer, text, first_trigger_pos, second_trigger_pos):
+    assert (first_trigger_pos[1] <= second_trigger_pos[0] or second_trigger_pos[1] <= first_trigger_pos[0]), "ERROR: 事件触发词重叠"
+
+    if first_trigger_pos[1] <= second_trigger_pos[0]:
+        pos_list = [0] + first_trigger_pos + second_trigger_pos
+        reverse = False
+    else:
+        pos_list = [0] + second_trigger_pos + first_trigger_pos
+        reverse = True
+
+    cur_pos = 0
+    new_pos_list = []
+    input_text = []
+    for i in range(len(pos_list)-1):
+        sub_text = text[pos_list[i]: pos_list[i+1]]
+        sub_input_text = tokenizer.tokenize(sub_text) if len(sub_text)>0 else []
+        cur_pos = cur_pos+len(sub_input_text)
+        new_pos_list.append(cur_pos)
+        input_text += sub_input_text
+    sub_text = text[pos_list[-1]:]
+    sub_input_text = tokenizer.tokenize(sub_text)
+    cur_pos = cur_pos+len(sub_input_text)
+    new_pos_list.append(cur_pos)
+    input_text += sub_input_text
+
+    if reverse:
+        new_pos_b = new_pos_list[0:2]
+        new_pos_a = new_pos_list[2:4]
+    else:
+        new_pos_a = new_pos_list[0:2]
+        new_pos_b = new_pos_list[2:4]
+    
+    return input_text, new_pos_a, new_pos_b
+
+
 def get_tags_pos_list(pred_labels, input_masks, events_masks=None):
     pred_labels = pred_labels.tolist()
     input_masks = input_masks.tolist()
