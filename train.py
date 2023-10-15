@@ -1,19 +1,16 @@
 # coding=utf-8
-import json
 import torch
-import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 from transformers import AutoTokenizer
-from dataset import BatchEventDataset
+from dataloader import BatchEventDataset
 from model import EventExtractModel
 from utils import calc_events_relations_mertic, calc_tags_metric, get_events_relations_list, get_tags_pos_list
 
 
 epoch = 20
 tokenizer = AutoTokenizer.from_pretrained("../pretrain/chinese-roberta-wwm-ext")
-train_dataset = BatchEventDataset(file_path="./data/train.json", tokenizer=tokenizer, batch_size=32, shuffle=True, last_batch=False)
-dev_dataset = BatchEventDataset(file_path="./data/dev.json", tokenizer=tokenizer, batch_size=8, shuffle=False, last_batch=True)
+train_dataset = BatchEventDataset(file_path="./data/train.json", tokenizer=tokenizer, batch_size=32, shuffle=True, drop_last=True)
+dev_dataset = BatchEventDataset(file_path="./data/dev.json", tokenizer=tokenizer, batch_size=8, shuffle=False, drop_last=False)
 model = EventExtractModel("../pretrain/chinese-roberta-wwm-ext").cuda()
 optimizer = optim.AdamW([
     {'params': [p for n, p in model.named_parameters() if "LayerNorm" not in n], 'weight_decay': 0.01},

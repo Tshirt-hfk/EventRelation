@@ -1,7 +1,7 @@
 # coding=utf-8
 import torch
 from flask import Flask, jsonify, abort, request
-from dataset import ID2TAG, LABEL2ER
+from dataloader import ID2TAG, LABEL2ER
 from model import EventExtractModel
 from predict import predict, predict_with_triggers
 from transformers import AutoTokenizer

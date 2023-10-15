@@ -1,5 +1,5 @@
 # coding=utf-8
-from dataset import ID2TAG, LABEL2ER
+from dataloader import ID2TAG, LABEL2ER
 from model import EventExtractModel
 import torch
 from transformers import AutoTokenizer
@@ -52,7 +52,6 @@ def predict_with_triggers(model, tokenizer, input_text, pos_list):
     
     input_text, pos_list = get_trigger_pos_from_text(tokenizer, input_text, pos_list)
     triggers_pos_list_out = [(0, (pos[0]+1, pos[1])) for pos in pos_list]
-    print(triggers_pos_list_out)
     tokenized_input = tokenizer(input_text, is_split_into_words=True)
     input_ids = tokenized_input.input_ids
     attention_mask = tokenized_input.attention_mask
@@ -95,7 +94,7 @@ if __name__ == "__main__":
     mdoel = model.cuda()
     model.eval()
     text = "本报讯(记者雷娜)昨天上午11时许，顺平路北窑上桥南两公里处，一辆满载煤炭的大货车为躲避前方突然并线的小轿车，失控侧翻到逆行车道。事故中司机受伤。"
-    trigger_pos_a, trigger_pos_b = [2, 3], [42, 44]
+    trigger_pos_list = [[2, 3], [42, 44]]
 
     input_text, triggers_pos_list, events_tags_list, events_relations_list = predict(model, tokenizer, text)
 
@@ -117,7 +116,7 @@ if __name__ == "__main__":
                 print("event {} - {} relation: {}".format(i, j, LABEL2ER[relation]))
 
     print("\nonly predict for two event =====================================>")
-    input_text, triggers_pos_list_out, events_tags_list, events_relations_list = predict_with_triggers(model, tokenizer, text, trigger_pos_a, trigger_pos_b)
+    input_text, triggers_pos_list_out, events_tags_list, events_relations_list = predict_with_triggers(model, tokenizer, text, trigger_pos_list)
     for i, (trigger_pos, event_tags) in enumerate(zip(triggers_pos_list, events_tags_list)):
         print("----------event {} start----------".format(i))
         _, pos = trigger_pos

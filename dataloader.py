@@ -118,11 +118,11 @@ class EventDataset:
 
 class BatchEventDataset(EventDataset):
 
-    def __init__(self, file_path, tokenizer, batch_size=32, shuffle=True, last_batch=False):
+    def __init__(self, file_path, tokenizer, batch_size=32, shuffle=True, drop_last=False):
         super().__init__(file_path, tokenizer)
         self.batch_size = batch_size
         self.shuffle = shuffle
-        self.last_batch = last_batch
+        self.drop_last = drop_last
         self.batch_examples = []
 
     def __len__(self):
@@ -135,7 +135,7 @@ class BatchEventDataset(EventDataset):
         self.batch_examples.clear()
         if self.shuffle:
             random.shuffle(self.examples)
-        if self.last_batch:
+        if not self.drop_last:
             num = math.ceil(len(self.examples)/self.batch_size)
         else:
             num = len(self.examples)//self.batch_size
@@ -205,11 +205,4 @@ class BatchEventDataset(EventDataset):
         data = self.batch_examples[self.idx]
         self.idx += 1
         return data
-    
 
-from transformers import AutoTokenizer
-tokenizer = AutoTokenizer.from_pretrained("../pretrain/chinese-roberta-wwm-ext")
-train_dataset = BatchEventDataset(file_path="./data/example.json", tokenizer=tokenizer, batch_size=32, shuffle=True, last_batch=False)
-
-
-    
