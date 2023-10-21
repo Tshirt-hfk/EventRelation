@@ -12,6 +12,7 @@ tokenizer = AutoTokenizer.from_pretrained("../pretrain/chinese-roberta-wwm-ext")
 train_dataset = BatchEventDataset(file_path="./data/train.json", tokenizer=tokenizer, batch_size=32, shuffle=True, drop_last=True)
 dev_dataset = BatchEventDataset(file_path="./data/dev.json", tokenizer=tokenizer, batch_size=8, shuffle=False, drop_last=False)
 model = EventExtractModel("../pretrain/chinese-roberta-wwm-ext").cuda()
+print(model)
 optimizer = optim.AdamW([
     {'params': [p for n, p in model.named_parameters() if "LayerNorm" not in n], 'weight_decay': 0.01},
     {'params': [p for n, p in model.named_parameters() if "LayerNorm" in n], 'weight_decay': 0.0}
@@ -40,7 +41,7 @@ for idx in range(epoch):
                         events_tags_logit, events_tags_label,
                         events_relations_logit, events_relations_label,
                         attention_mask, events_tags_mask, events_mask)
-        loss = triggers_loss + events_tags_loss * min(1, idx*0.5) + events_relations_loss * min(1, idx*0.5)
+        loss = triggers_loss + events_tags_loss * min(2, idx*0.5) + events_relations_loss * min(2, idx*0.5)
 
         print("epoch: {}-{}, triggers_loss: {}, events_tags_loss: {}, events_relations_loss: {}".format(idx, i, triggers_loss, events_tags_loss, events_relations_loss))
         optimizer.zero_grad()

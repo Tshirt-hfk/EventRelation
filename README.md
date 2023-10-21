@@ -13,5 +13,5 @@ pip install -r requirements.txt
 # 效果
 #### 指标：              (f1, precision, recall)
 #### trigger tags:       (0.8214, 0.8142, 0.8288)
-#### event tags:         (0.6984, 0.6875, 0.7097)
-#### event relations:    (0.5745, 0.5625, 0.5870)
+#### event tags:         (0.7728, 0.7556, 0.7907)
+#### event relations:    (0.5494, 0.5208, 0.5814)

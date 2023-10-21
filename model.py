@@ -6,10 +6,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import BertModel
 
-class BasicAttentionLayer(nn.Module):
+class SelfAttentionLayer(nn.Module):
     
-    def __init__(self, embed_dim, num_heads, k_dim=None, v_dim=None, bias=True, dropout=0.0, q_transform=False):
-        super(BasicAttentionLayer, self).__init__()
+    def __init__(self, embed_dim, num_heads, k_dim=None, v_dim=None, bias=True, dropout=0.0, max_positon=256):
+        super(SelfAttentionLayer, self).__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.k_dim = embed_dim // num_heads if k_dim is None else k_dim
@@ -18,31 +18,33 @@ class BasicAttentionLayer(nn.Module):
         self.scaling = self.k_dim ** -0.5
         self.dropout = dropout
 
-        if q_transform:
-            self.q_transform = nn.Linear(embed_dim, self.num_heads * self.v_dim, bias=bias)
-        else:
-            self.q_transform = None
         self.q_proj = nn.Linear(embed_dim, self.num_heads * self.k_dim, bias=bias)
         self.k_proj = nn.Linear(embed_dim, self.num_heads * self.k_dim, bias=bias)
         self.v_proj = nn.Linear(embed_dim, self.num_heads * self.v_dim, bias=bias)
 
+        self.rpe = nn.Parameter(torch.zeros(max_positon*2, self.num_heads, self.v_dim))
+
+        self.q_transform = nn.Linear(embed_dim, self.embed_dim, bias=bias)
+        self.out_proj = nn.Linear(self.num_heads * self.v_dim, self.embed_dim, bias=bias)
+        self.layer_norm = nn.LayerNorm(self.embed_dim, eps=1e-6)
+
         self.init_weight()
 
     def init_weight(self):
-        if self.q_transform is not None:
-            nn.init.xavier_uniform_(self.q_transform.weight)
-            nn.init.constant_(self.q_transform.bias, 0.)
-
-        nn.init.xavier_uniform_(self.k_proj.weight)
-        nn.init.xavier_uniform_(self.v_proj.weight)
-        nn.init.xavier_uniform_(self.q_proj.weight)
+        nn.init.xavier_normal_(self.q_transform.weight)
+        nn.init.xavier_normal_(self.out_proj.weight)
+        nn.init.xavier_normal_(self.q_proj.weight)
+        nn.init.xavier_normal_(self.k_proj.weight)
+        nn.init.xavier_normal_(self.v_proj.weight)
 
         if self.bias:
+            nn.init.constant_(self.q_transform.bias, 0.)
+            nn.init.constant_(self.out_proj.bias, 0.)
             nn.init.constant_(self.q_proj.bias, 0.)
             nn.init.constant_(self.k_proj.bias, 0.)
             nn.init.constant_(self.v_proj.bias, 0.)
 
-    def forward(self, query, key, value, mask=None):
+    def forward(self, query, key, value, pos, mask=None):
         # bsz, len, embed_dim
         bsz = query.size(0)
         src_len = query.size(1)
@@ -53,30 +55,28 @@ class BasicAttentionLayer(nn.Module):
         v = self.v_proj(value)
 
         q *= self.scaling
-        q = q.transpose(0, 1).contiguous().view(-1, bsz * self.num_heads, self.k_dim).transpose(0, 1)
-        k = k.transpose(0, 1).contiguous().view(-1, bsz * self.num_heads, self.k_dim).transpose(0, 1)
-        v = v.transpose(0, 1).contiguous().view(-1, bsz * self.num_heads, self.v_dim).transpose(0, 1)
+        q = q.view(bsz, -1, self.num_heads, self.k_dim)
+        k = k.view(bsz, -1, self.num_heads, self.k_dim)
+        v = v.view(bsz, -1, self.num_heads, self.v_dim)
 
-        attn_weights = torch.bmm(q, k.transpose(1, 2))
-        assert list(attn_weights.size()) == [bsz * self.num_heads, src_len, trg_len]
+        attn_weights = torch.einsum("bqnd,bknd->bqkn", q, k)
+        qrpe_weights = torch.einsum("bqnd,lnd->bqln", q, self.rpe)
+        pos = pos.unsqueeze(3).expand(-1, -1, -1, self.num_heads)
+        qrpe_weights = torch.gather(qrpe_weights, dim=2, index=pos)
+        attn_weights = attn_weights + qrpe_weights
 
         if mask is not None:
-            attn_weights = attn_weights.view(bsz, self.num_heads, src_len, trg_len)
-            mask = mask.unsqueeze(1)
-            attn_weights = attn_weights - (1 - mask) * 1e6
-            attn_weights = attn_weights.view(bsz * self.num_heads, src_len, trg_len)
+            attn_weights = attn_weights - (1 - mask.unsqueeze(-1)) * 1e6
 
-        attn_weights = torch.softmax(attn_weights, dim=-1)
+        attn_weights = torch.softmax(attn_weights, dim=-2)
         attn_weights = F.dropout(attn_weights, p=self.dropout, training=self.training)
 
-        attn = torch.bmm(attn_weights, v)
+        attn = torch.einsum("bqkn,bknd->bqnd", attn_weights, v)
+        attn = attn.contiguous().view(bsz, src_len, self.num_heads * self.v_dim)
 
-        attn = attn.view(bsz, self.num_heads, src_len, self.v_dim).transpose(1, 2).contiguous().view(bsz, src_len, self.num_heads * self.v_dim)
+        out = self.layer_norm(self.out_proj(attn) + self.q_transform(query))
 
-        if self.q_transform is not None:
-            attn = attn + self.q_transform(query)
-
-        return attn
+        return out
 
 class InteractionLayer(nn.Module):
     
@@ -93,8 +93,8 @@ class InteractionLayer(nn.Module):
         self.init_weight()
 
     def init_weight(self):
-        nn.init.xavier_uniform_(self.k_proj.weight)
-        nn.init.xavier_uniform_(self.q_proj.weight)
+        nn.init.xavier_normal_(self.k_proj.weight)
+        nn.init.xavier_normal_(self.q_proj.weight)
 
         if self.bias:
             nn.init.constant_(self.q_proj.bias, 0.)
@@ -110,19 +110,21 @@ class InteractionLayer(nn.Module):
         k = self.k_proj(key)
 
         q *= self.scaling
-        q = q.transpose(0, 1).contiguous().view(-1, bsz * self.num_heads, self.qk_dim).transpose(0, 1)
-        k = k.transpose(0, 1).contiguous().view(-1, bsz * self.num_heads, self.qk_dim).transpose(0, 1)
+        q = q.view(bsz, q_len, self.num_heads, self.qk_dim)
+        k = k.view(bsz, k_len, self.num_heads, self.qk_dim)
 
-        qk_weights = torch.bmm(q, k.transpose(1, 2))
-
-        qk_weights = qk_weights.view(bsz, self.num_heads, q_len, k_len).permute(0,2,3,1)
-
+        qk_weights = torch.einsum("bqnd,bknd->bqkn", q, k)  
         return qk_weights
+    
 
 class EventExtractModel(nn.Module):
 
     def __init__(self,
                  bert_dir,
+                 num_trigger_tags=3,
+                 num_event_tags=9,
+                 num_event_relations=7,
+                 max_positon=256,
                  dropout_prob=0.1):
         super(EventExtractModel, self).__init__()
 
@@ -131,33 +133,35 @@ class EventExtractModel(nn.Module):
         self.bert_module = BertModel.from_pretrained(bert_dir)
         self.hidden_size = self.bert_module.config.hidden_size
         self.num_attention_heads = self.bert_module.config.num_attention_heads
+        self.max_positon = max_positon
 
-        self.triggers_classifier = nn.Sequential(
+        self.triggers_tags_classifier = nn.Sequential(
             nn.Linear(self.hidden_size, 256),
             nn.GELU(),
             nn.Dropout(dropout_prob),
-            nn.Linear(256, 3)
+            nn.Linear(256, num_trigger_tags)
         )
 
-        self.events_tags_classifier = InteractionLayer(self.hidden_size, 9, qk_dim=128)
+        self.events_transform = SelfAttentionLayer(self.hidden_size, self.num_attention_heads, max_positon=max_positon)
 
-        self.events_transform = BasicAttentionLayer(self.hidden_size, self.num_attention_heads, q_transform=True)
+        self.events_tags_classifier = InteractionLayer(self.hidden_size, num_event_tags, qk_dim=128)
+        
         self.events_relations_classifier = nn.Sequential(
-            nn.Linear(self.hidden_size*2, 256),
+            nn.Linear(self.hidden_size*2, 512),
             nn.GELU(),
             nn.Dropout(dropout_prob),
-            nn.Linear(256, 7)
+            nn.Linear(512, num_event_relations)
         )
 
     def calc_triggers_tags(self, seq_out):
 
-        triggers_logits = self.triggers_classifier(seq_out)
+        triggers_logits = self.triggers_tags_classifier(seq_out)
 
         return triggers_logits
     
-    def calc_events_tags(self, seq_out, triggers_hidden):
+    def calc_events_tags(self, seq_out, events_hidden):
 
-        events_tags_logits = self.events_tags_classifier(triggers_hidden, seq_out)
+        events_tags_logits = self.events_tags_classifier(events_hidden, seq_out)
 
         return events_tags_logits
     
@@ -170,9 +174,8 @@ class EventExtractModel(nn.Module):
         events_relations_logits = self.events_relations_classifier(events_interaction)
         return events_relations_logits
 
-    def get_events_hidden(self, seq_out, triggers_hidden, attention_mask):
-        triggers_hidden = triggers_hidden
-        events_hidden = self.events_transform(triggers_hidden, seq_out, seq_out, attention_mask.unsqueeze(1))
+    def get_events_hidden(self, seq_out, triggers_hidden, event_pos, attention_mask):
+        events_hidden = self.events_transform(triggers_hidden, seq_out, seq_out, event_pos, attention_mask.unsqueeze(1))
         return events_hidden
 
     def get_triggers_hidden(self, seq_out, triggers_pos, triggers_mask):
@@ -200,10 +203,16 @@ class EventExtractModel(nn.Module):
         seq_out, _ = self.get_seq_hidden(input_ids, attention_mask)
         triggers_logit = self.calc_triggers_tags(seq_out)
 
-        triggers_hidden = self.get_triggers_hidden(seq_out, triggers_pos, triggers_mask)   
-        events_tags_logit = self.calc_events_tags(seq_out, triggers_hidden)
+        triggers_hidden = self.get_triggers_hidden(seq_out, triggers_pos, triggers_mask)
 
-        events_hidden = self.get_events_hidden(seq_out, triggers_hidden, attention_mask)
+        seq_len = seq_out.size(1)
+        triggers_pos = triggers_pos[:,:,:1]
+        event_pos = torch.arange(seq_len).type_as(triggers_pos).view(1, 1, -1) + self.max_positon - triggers_pos
+
+        events_hidden = self.get_events_hidden(seq_out, triggers_hidden, event_pos, attention_mask)
+
+        events_tags_logit = self.calc_events_tags(seq_out, events_hidden)
+
         events_relations_logit = self.calc_events_relations(events_hidden)
 
         return triggers_logit, events_tags_logit, events_relations_logit
