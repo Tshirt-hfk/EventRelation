@@ -90,7 +90,7 @@ if __name__ == "__main__":
 
     tokenizer = AutoTokenizer.from_pretrained("../pretrain/chinese-roberta-wwm-ext")
     model = EventExtractModel("../pretrain/chinese-roberta-wwm-ext")
-    model.load_state_dict(torch.load("./output/model_9.pt"))
+    model.load_state_dict(torch.load("./output/model_15.pt"))
     mdoel = model.cuda()
     model.eval()
 
