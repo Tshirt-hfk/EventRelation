@@ -11,6 +11,8 @@ def predict(model, tokenizer, input_text):
     input_text = tokenizer.tokenize(input_text)
     tokenized_input = tokenizer(input_text, is_split_into_words=True)
     input_ids = tokenized_input.input_ids
+    if len(input_ids) > 256:
+        raise Exception("input text is too long!")
     attention_mask = tokenized_input.attention_mask
     input_ids = torch.LongTensor([input_ids]).cuda()
     attention_mask = torch.LongTensor([attention_mask]).cuda()
@@ -54,6 +56,8 @@ def predict_with_triggers(model, tokenizer, input_text, pos_list):
     triggers_pos_list_out = [(0, (pos[0]+1, pos[1])) for pos in pos_list]
     tokenized_input = tokenizer(input_text, is_split_into_words=True)
     input_ids = tokenized_input.input_ids
+    if len(input_ids) > 256:
+        raise Exception("input text is too long!")
     attention_mask = tokenized_input.attention_mask
     input_ids = torch.LongTensor([input_ids]).cuda()
     attention_mask = torch.LongTensor([attention_mask]).cuda()

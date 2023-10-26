@@ -70,7 +70,7 @@ def process_v2():
                     })
 
     except Exception as e:
-        rps_json = {
+        rsp_json = {
                 "code": 500,
                 "message": "%s" % e
             }
