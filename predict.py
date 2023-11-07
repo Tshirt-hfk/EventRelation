@@ -103,7 +103,6 @@ if __name__ == "__main__":
     input_text, triggers_pos_list, events_tags_list, events_relations_list = predict(model, tokenizer, text)
 
     print("".join(input_text))
-
     print("\npredict for event analysis =====================================>")
     for i, (trigger_pos, event_tags) in enumerate(zip(triggers_pos_list, events_tags_list)):
         print("----------event {} start----------".format(i))
@@ -114,16 +113,19 @@ if __name__ == "__main__":
             tag = ID2TAG[label]
             print(tag+":", "".join(input_text[pos[0]-1:pos[-1]]))
         print("----------event {} end----------".format(i))
-    
-    text = "本报讯(记者雷娜)昨天上午11时许，顺平路北窑上桥南两公里处，一辆满载煤炭的大货车为躲避前方突然并线的小轿车，失控侧翻到逆行车道。事故中司机受伤。"
-    trigger_pos_list = [[2, 3], [42, 44]]
+
     for i, event_relations in enumerate(events_relations_list):
         for j, relation in enumerate(event_relations):
             if relation > 0:
                 print("event {} - {} relation: {}".format(i, j, LABEL2ER[relation]))
 
-    print("\nonly predict for event relation =====================================>")
+    print("\n\n--------------------------------------------------------------------------------------------------------------------------------------\n\n")
+    
+    text = "本报讯(记者雷娜)昨天上午11时许，顺平路北窑上桥南两公里处，一辆满载煤炭的大货车为躲避前方突然并线的小轿车，失控侧翻到逆行车道。事故中司机受伤。"
+    trigger_pos_list = [[2, 3], [42, 44]]
     input_text, triggers_pos_list_out, events_tags_list, events_relations_list = predict_with_triggers(model, tokenizer, text, trigger_pos_list)
+    print("".join(input_text))
+    print("\nonly predict for event relation =====================================>")
     for i, (trigger_pos, event_tags) in enumerate(zip(triggers_pos_list, events_tags_list)):
         print("----------event {} start----------".format(i))
         _, pos = trigger_pos
@@ -133,7 +135,6 @@ if __name__ == "__main__":
             tag = ID2TAG[label]
             print(tag+":", "".join(input_text[pos[0]-1:pos[-1]]))
         print("----------event {} end----------".format(i))
-    print(events_relations_list)
     for i, event_relations in enumerate(events_relations_list):
         for j, relation in enumerate(event_relations):
             if relation > 0:

@@ -19,22 +19,44 @@ def hello_world():
 
 @app.route("/event_relation_analysis", methods=["GET", "POST"])
 def process():
-    if request.method == "GET":
-        text = request.args.get("text")
-    if request.method == "POST":
-        if request.content_type.startswith('application/json'):
-            text = request.json.get('text')
-        elif request.content_type.startswith('multipart/form-data'):
-            text = request.form.get('text')
-        else:
-            text = request.values.get("text")
-    input_text, triggers_pos_list, events_tags_list, events_relations_list = predict(model, tokenizer, text)
-    return jsonify({
-        "input_text": input_text,
-        "triggers_pos_list": triggers_pos_list,
-        "events_tags_list": events_tags_list,
-        "events_relations_list": events_relations_list
-    })
+    if request.content_type.startswith('application/json'):
+        text = request.json.get('full_text')
+    elif request.content_type.startswith('multipart/form-data'):
+        text = request.form.get('full_text')
+    else:
+        text = request.values.get("full_text")
+
+    try:
+        input_text, triggers_pos_list, events_tags_list, events_relations_list = predict(model, tokenizer, text)
+        rsp_json = {
+            "code": 200,
+            "message": "success",
+            "event_list": [],
+            "event_relations_list": []
+        }
+        for i, (trigger_pos, event_tags) in enumerate(zip(triggers_pos_list, events_tags_list)):
+            event = {"id": i}
+            _, pos = trigger_pos
+            event['trigger'] = "".join(input_text[pos[0]-1:pos[-1]])
+            for event_tag in event_tags:
+                label, pos = event_tag
+                tag = ID2TAG[label]
+                event[tag] = "".join(input_text[pos[0]-1:pos[-1]])
+            rsp_json['event_list'].append(event)
+        for i, event_relations in enumerate(events_relations_list):
+            for j, relation in enumerate(event_relations):
+                if relation > 0:
+                    rsp_json['event_relations_list'].append({
+                        "head_id": i,
+                        "tail_id": j,
+                        "relation": LABEL2ER[relation]
+                    })
+    except Exception as e:
+        rsp_json = {
+                "code": 500,
+                "message": "%s" % e
+            }
+    return jsonify(rsp_json)
 
 
 @app.route("/event_relation", methods=["POST"])
