@@ -123,7 +123,7 @@ if __name__ == "__main__":
     
     text = "本报讯(记者雷娜)昨天上午11时许，顺平路北窑上桥南两公里处，一辆满载煤炭的大货车为躲避前方突然并线的小轿车，失控侧翻到逆行车道。事故中司机受伤。"
     trigger_pos_list = [[2, 3], [42, 44]]
-    input_text, triggers_pos_list_out, events_tags_list, events_relations_list = predict_with_triggers(model, tokenizer, text, trigger_pos_list)
+    input_text, triggers_pos_list, events_tags_list, events_relations_list = predict_with_triggers(model, tokenizer, text, trigger_pos_list)
     print("".join(input_text))
     print("\nonly predict for event relation =====================================>")
     for i, (trigger_pos, event_tags) in enumerate(zip(triggers_pos_list, events_tags_list)):

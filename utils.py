@@ -5,7 +5,6 @@ def get_trigger_pos_from_text(tokenizer, text, trigger_pos_list):
     pos_with_order = sorted([[i, pos] for i, pos in enumerate(trigger_pos_list)], key=lambda x:x[1][0])
     order_list = [x[0] for x in pos_with_order]
     pos_list = [x[1] for x in pos_with_order]
-    print(trigger_pos_list, order_list, pos_list)
     for i in range(len(pos_list)-1):
         if pos_list[i][1] > pos_list[i+1][0]:
             raise "ERROR: 事件触发词重叠"
