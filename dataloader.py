@@ -44,54 +44,54 @@ LABEL2POLARITY = {v:k for k,v in POLARITY2LABEL.items()}
 
 class EventDataset:
 
-    def __init__(self, file_path, tokenizer):
+    def __init__(self, file_path, tokenizer, max_len=512):
         super().__init__()
 
         self.examples = []
         with open(file_path, 'r', encoding="utf-8") as f:
             for line in f.readlines():
-
                 example = json.loads(line.strip())
-                tokenized_input = tokenizer(example["sentence"], is_split_into_words=True)
-                input_ids = tokenized_input.input_ids
-                word_ids = tokenized_input.word_ids()
-                triggers_label = [TRIGGER2LABEL['O']] * len(word_ids)
+                input_ids = tokenizer.convert_tokens_to_ids(example["sentence"])
+                input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
+                if len(input_ids)>max_len: continue
+                triggers_label = [TRIGGER2LABEL['O']] * len(input_ids)
                 triggers_pos = []
                 events_polarity = []
                 events_label = []
                 for event in example['events']:
                     event_label = []
                     trigger_pos = []
-                    for i, word_id in enumerate(word_ids):
+                    for i in range(len(input_ids)):
+                        word_idx = i - 1
                         label = TAG2LABEL['O']
-                        if word_id is None:
+                        if not 0 <= word_idx < len(example["sentence"]):
                             event_label.append(label)
                             continue
-                        if event['trigger']['offset'][0] == word_id:
+                        if event['trigger']['offset'][0] == word_idx:
                             triggers_label[i] = TRIGGER2LABEL['B-TRIGGER']
                             trigger_pos.append(i)
-                        if event['trigger']['offset'][0] < word_id < event['trigger']['offset'][1]:
+                        if event['trigger']['offset'][0] < word_idx < event['trigger']['offset'][1]:
                             triggers_label[i] = TRIGGER2LABEL['I-TRIGGER']
                             trigger_pos.append(i)
                         if event['time'] is not None:
-                            if event['time']['offset'][0] == word_id:
+                            if event['time']['offset'][0] == word_idx:
                                 label = TAG2LABEL['B-TIME']
-                            elif event['time']['offset'][0] < word_id < event['time']['offset'][1]:
+                            elif event['time']['offset'][0] < word_idx < event['time']['offset'][1]:
                                 label = TAG2LABEL['I-TIME']
                         if event['loc'] is not None:
-                            if event['loc']['offset'][0] == word_id:
+                            if event['loc']['offset'][0] == word_idx:
                                 label = TAG2LABEL['B-LOC']
-                            elif event['loc']['offset'][0] < word_id < event['loc']['offset'][1]:
+                            elif event['loc']['offset'][0] < word_idx < event['loc']['offset'][1]:
                                 label = TAG2LABEL['I-LOC']       
                         for object_s in event['object_s']:
-                            if object_s['offset'][0] == word_id:
+                            if object_s['offset'][0] == word_idx:
                                 label = TAG2LABEL['B-OBJECT-S']
-                            elif object_s['offset'][0] < word_id < object_s['offset'][1]:
+                            elif object_s['offset'][0] < word_idx < object_s['offset'][1]:
                                 label = TAG2LABEL['I-OBJECT-S']
                         for object_o in event['object_o']:
-                            if object_o['offset'][0] == word_id:
+                            if object_o['offset'][0] == word_idx:
                                 label = TAG2LABEL['B-OBJECT-O']
-                            elif object_o['offset'][0] < word_id < object_o['offset'][1]:
+                            elif object_o['offset'][0] < word_idx < object_o['offset'][1]:
                                 label = TAG2LABEL['I-OBJECT-O']
                         event_label.append(label)
                     triggers_pos.append(trigger_pos)

@@ -1,4 +1,5 @@
 # coding:utf-8
+from collections import defaultdict
 import os, json
 import xml.etree.ElementTree as ET
 from transformers import AutoTokenizer
@@ -130,12 +131,13 @@ def parse_xml_content(file_path):
                 "eid_s": eid_s,
                 "eid_o": eid_o,
             })
+    
     data = {
         "sentence": content_cutted_text,
         "events": event_list,
         "relations": event_relation_list
     }
-    return data
+    return [data]
 
 
 def parse_xml_paragraph(file_path):
@@ -271,11 +273,30 @@ def parse_xml_paragraph(file_path):
     return data
 
 
+paragraph_data = []
+content_data = []
+for filepath, dirnames, filenames in os.walk('./CEC'):
+    for filename in filenames:
+        print(os.path.join(filepath, filename))
+        paragraph_data += parse_xml_paragraph(os.path.join(filepath, filename))
+        content_data += parse_xml_content(os.path.join(filepath, filename))     
+print("event relation type:", event_relation_type)
+print("-------------------------------------------------------------------------")
+data_len = defaultdict(int)
+for line in paragraph_data:
+    sentence = line['sentence']
+    data_len[len(sentence)] += 1
+data_len = sorted([(l, n) for l,n in data_len.items()], key=lambda x:x[0])
+print("paragraph data length:", data_len)
+print("-------------------------------------------------------------------------")
+data_len = defaultdict(int)
+for line in content_data:
+    sentence = line['sentence']
+    data_len[len(sentence)] += 1
+data_len = sorted([(l, n) for l,n in data_len.items()], key=lambda x:x[0])
+print("content data length:", data_len)
+
 with open("./data/cec.json", "w", encoding='utf8') as f:
-    for filepath, dirnames, filenames in os.walk('.\CEC'):
-        for filename in filenames:
-            print(os.path.join(filepath, filename))
-            data = parse_xml_paragraph(os.path.join(filepath, filename))
-            for line in data:
-                f.write(json.dumps(line, ensure_ascii=False)+"\n")
-    print(event_relation_type)
+    for line in paragraph_data+content_data:
+        if len(line['sentence']) > 510: continue
+        f.write(json.dumps(line, ensure_ascii=False)+"\n")

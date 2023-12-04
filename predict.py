@@ -9,11 +9,11 @@ from utils import get_events_relations_list, get_tags_pos_list, get_trigger_pos_
 def predict(model, tokenizer, input_text):
 
     input_text = tokenizer.tokenize(input_text)
-    tokenized_input = tokenizer(input_text, is_split_into_words=True)
-    input_ids = tokenized_input.input_ids
-    if len(input_ids) > 256:
+    input_ids = tokenizer.convert_tokens_to_ids(input_text)
+    input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
+    if len(input_ids) > 512:
         raise Exception("input text is too long!")
-    attention_mask = tokenized_input.attention_mask
+    attention_mask = [1 for _ in range(len(input_ids))]
     input_ids = torch.LongTensor([input_ids]).cuda()
     attention_mask = torch.LongTensor([attention_mask]).cuda()
     seq_out, _ = model.get_seq_hidden(input_ids, attention_mask)
@@ -54,11 +54,11 @@ def predict_with_triggers(model, tokenizer, input_text, pos_list):
     
     input_text, pos_list = get_trigger_pos_from_text(tokenizer, input_text, pos_list)
     triggers_pos_list_out = [(0, (pos[0]+1, pos[1])) for pos in pos_list]
-    tokenized_input = tokenizer(input_text, is_split_into_words=True)
-    input_ids = tokenized_input.input_ids
-    if len(input_ids) > 256:
+    input_ids = tokenizer.convert_tokens_to_ids(input_text)
+    input_ids = [tokenizer.cls_token_id] + input_ids + [tokenizer.sep_token_id]
+    if len(input_ids) > 512:
         raise Exception("input text is too long!")
-    attention_mask = tokenized_input.attention_mask
+    attention_mask = [1 for _ in range(len(input_ids))]
     input_ids = torch.LongTensor([input_ids]).cuda()
     attention_mask = torch.LongTensor([attention_mask]).cuda()
     seq_out, _ = model.get_seq_hidden(input_ids, attention_mask)

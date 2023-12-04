@@ -124,7 +124,7 @@ class EventExtractModel(nn.Module):
                  num_trigger_tags=3,
                  num_event_tags=9,
                  num_event_relations=7,
-                 max_positon=256,
+                 max_positon=512,
                  dropout_prob=0.1):
         super(EventExtractModel, self).__init__()
 
